@@ -46,6 +46,42 @@ void WrenchInterface::update(RTShared &packet)
   tcp_ = packet.tcp_force;
 }
 
+const std::string ImuInterface::INTERFACE_NAME = "hardware_interface::ImuSensorInterface";
+ImuInterface::ImuInterface(std::string tcp_link)
+  : orientation_{ 0, 0, 0, 1 }
+  , orientation_covariance_{ -1 }
+  , angular_velocity_{ 0, 0, 0 }
+  , angular_velocity_covariance_{ -1 }
+  , linear_acceleration_{ 0, 0, 0 }
+  , linear_acceleration_covariance_{ -1 }
+{
+  registerHandle(hardware_interface::ImuSensorHandle(
+      { "imu", tcp_link, orientation_.begin(), orientation_covariance_.begin(), angular_velocity_.begin(),
+        angular_velocity_covariance_.begin(), linear_acceleration_.begin(), linear_acceleration_covariance_.begin() }));
+}
+
+void ImuInterface::update(RTState_V3_0__1 &packet)
+{
+  const auto &tv = packet.tool_vector_actual;
+  const double angle = std::sqrt(std::pow(tv.rotation.x, 2) + std::pow(tv.rotation.y, 2) + std::pow(tv.rotation.z, 2));
+  if (angle < 1e-16)
+  {
+    orientation_ = { 0, 0, 0, 1 };
+  }
+  else
+  {
+    const auto s = std::sin(0.5 * angle) / angle;
+    const auto c = std::cos(0.5 * angle);
+    orientation_ = { tv.rotation.x * s, tv.rotation.y * s, tv.rotation.z * s, c };
+  }
+
+  const auto &sa = packet.tcp_speed_actual;
+  angular_velocity_ = { sa.rotation.x, sa.rotation.y, sa.rotation.z };
+
+  const auto &ta = packet.tool_accelerometer_values;
+  linear_acceleration_ = { ta.x, ta.y, ta.z };
+}
+
 const std::string VelocityInterface::INTERFACE_NAME = "hardware_interface::VelocityJointInterface";
 VelocityInterface::VelocityInterface(URCommander &commander, hardware_interface::JointStateInterface &js_interface,
                                      std::vector<std::string> &joint_names, double max_vel_change)
